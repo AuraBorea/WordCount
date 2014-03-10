@@ -35,7 +35,7 @@ public class FourthWallMP extends Configured implements Tool {
       public void map(LongWritable key, Text value, OutputCollector<Text, ArrayWritable> output, Reporter reporter) throws IOException {
         
     	  String line = value.toString();
-    	  String[] array = line.split(",");
+    	  String[] array = line.split("\\|", -1);
     	  
     	  reporter.incrCounter(Counters.NUM_RECORDS, 1);
     	  if (array.length < fields.values().length) {
