@@ -96,6 +96,7 @@ public class FourthWallMP extends Configured implements Tool {
     public int run(String[] args) throws Exception {
       JobConf conf = new JobConf(getConf(), FourthWallMP.class);
       conf.setJobName("fourthwall splice");
+      conf.setJarByClass(FourthWallMP.class);
 
       conf.setOutputKeyClass(Text.class);
       conf.setOutputValueClass(ArrayWritable.class);
