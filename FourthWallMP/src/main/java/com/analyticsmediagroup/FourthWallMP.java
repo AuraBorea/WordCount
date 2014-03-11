@@ -1,3 +1,4 @@
+package com.analyticsmediagroup;
 import java.io.*;
 import java.util.*;
 
@@ -6,14 +7,23 @@ import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.conf.*;
 import org.apache.hadoop.io.*;
 import org.apache.hadoop.io.SequenceFile.CompressionType;
+import org.apache.hadoop.io.compress.DefaultCodec;
 import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.hadoop.mapred.*;
+import org.apache.hadoop.mapred.lib.MultipleTextOutputFormat;
 import org.apache.hadoop.util.*;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
+import org.apache.log4j.*;
+
+// TODO: 
+// 1 convert string output from weird pointer value to actual text
+// 2 find out how to print out the counter values
 
 public class FourthWallMP extends Configured implements Tool {
 
-    public static class Map extends MapReduceBase implements Mapper<LongWritable, Text, Text, ArrayWritable> {
+    public static class Map extends MapReduceBase implements Mapper<LongWritable, Text, LongWritable, String> {
 
       public enum fields {
     		id, media_market_id, station_id, date_id, household_key, mso_key, device_key, 
@@ -22,20 +32,21 @@ public class FourthWallMP extends Configured implements Tool {
       }
     
       static enum Counters { NUM_RECORDS, WRONG_LENGTH, MISSING_DEVICE_KEY, MISSING_STATION_ID ,
-    	  					 FLIPPING_CHANNEL, VALID_RECORDS 
+    	  					 FLIPPING_CHANNEL, VALID_RECORDS, INVALID_NUMBER 
     	  					}
       
       private long numRecords = 0;
       private String inputFile;
+      private static final Log LOG = LogFactory.getLog(FourthWallMP.class);
 
       public void configure(JobConf job) {
         inputFile = job.get("map.input.file");
       }
 
-      public void map(LongWritable key, Text value, OutputCollector<Text, ArrayWritable> output, Reporter reporter) throws IOException {
+      public void map(LongWritable key, Text value, OutputCollector<LongWritable, String> output, Reporter reporter) throws IOException {
         
     	  String line = value.toString();
-    	  String[] array = line.split("\\|", -1);
+    	  String[] array = line.split("\\|");
     	  
     	  reporter.incrCounter(Counters.NUM_RECORDS, 1);
     	  if (array.length < fields.values().length) {
@@ -50,7 +61,8 @@ public class FourthWallMP extends Configured implements Tool {
 	    	  reporter.incrCounter(Counters.MISSING_STATION_ID, 1);
 	      		return;
 	      }
-//	      if (array[fields.processed.ordinal()] == "t") {
+
+	      //	      if (array[fields.processed.ordinal()] == "f") {
 //	      	  reporter.incrCounter(Counters.ALREADY_PROCESSED, 1);
 //	    	  return;
 //	      }
@@ -62,58 +74,62 @@ public class FourthWallMP extends Configured implements Tool {
 //	      	  reporter.incrCounter(Counters.OLD_ENTRY, 1);
 //	    	  return;
 //	      }
+
 	      // parse the duration_time into quarter hour segments
-	      if (Integer.parseInt(array[fields.duration_seconds.ordinal()]) < 120) { //if duration < 2mins, ignore
-	    	  reporter.incrCounter(Counters.FLIPPING_CHANNEL, 1);
+	      try {
+		      if (Long.parseLong(array[fields.duration_seconds.ordinal()]) < 120) { //if duration < 2mins, ignore
+		    	  reporter.incrCounter(Counters.FLIPPING_CHANNEL, 1);
+		    	  return;
+		      }
+		      long duration = Long.parseLong(array[fields.id.ordinal()]);
+	
+		      for (int i=0; i < duration/900; i++) {
+		       // parse into 900s or 15min segments
+		    	  array[fields.duration_seconds.ordinal()] = "900";
+		    	  reporter.incrCounter(Counters.VALID_RECORDS, 1);
+			      StringBuilder builder = new StringBuilder();
+			      for (String s: array) {
+			    	  builder.append(s);
+			      }
+		    	  output.collect(new LongWritable(Long.parseLong(array[fields.id.ordinal()])), builder.toString());
+		      }
+		      	// leftover time is packaged into another segment
+		    	  array[fields.duration_seconds.ordinal()] = Long.toString(duration%900);
+		    	  reporter.incrCounter(Counters.VALID_RECORDS, 1);
+			      StringBuilder builder = new StringBuilder();
+			      for (String s: array) {
+			    	  builder.append(s);
+			      }
+
+		    	  output.collect(new LongWritable(Long.parseLong(array[fields.id.ordinal()])), builder.toString());
+
+		      if ((++numRecords % 100) == 0) {
+		    	  reporter.setStatus("Finished processing " + numRecords + " records " + "from the input file: " + inputFile);
+		      }
+	      } catch(NumberFormatException e) {
+	    	  reporter.incrCounter(Counters.INVALID_NUMBER, 1);
+	    	  LOG.error("duration_seconds has invalid value: " + array[fields.duration_seconds.ordinal()]);
+	          System.err.println("Caught exception while parsing the cached file '" +  "' : " + StringUtils.stringifyException(e));
 	    	  return;
 	      }
-	      int duration = Integer.parseInt(array[fields.id.ordinal()]);
-	      while (duration >= 900) { // parse into 900s or 15min segments
-	    	  array[fields.duration_seconds.ordinal()] = "900";
-	    	  reporter.incrCounter(Counters.VALID_RECORDS, 1);
-	    	  output.collect(new Text(array[fields.id.ordinal()]), new ArrayWritable(array));
-	    	  duration -= 900;
-	      }
 
-	      if (duration >= 120) { //last segment, if > 2min, output
-	    	  array[fields.duration_seconds.ordinal()] = Integer.toString(duration);
-	    	  reporter.incrCounter(Counters.VALID_RECORDS, 1);
-	    	  output.collect(new Text(array[fields.id.ordinal()]), new ArrayWritable(array));
-	      }
-
-	      if ((++numRecords % 100) == 0) {
-	    	  reporter.setStatus("Finished processing " + numRecords + " records " + "from the input file: " + inputFile);
-	      }
       }
     }
-//
-//    public static class Reduce extends MapReduceBase implements Reducer<Text, IntWritable, Text, IntWritable> {
-//      public void reduce(Text key, Iterator<IntWritable> values, OutputCollector<Text, IntWritable> output, Reporter reporter) throws IOException {
-//        
-//      }
-//    }
 
     public int run(String[] args) throws Exception {
       JobConf conf = new JobConf(getConf(), FourthWallMP.class);
       conf.setJobName("fourthwall splice");
+      conf.setJarByClass(FourthWallMP.class);
 
       conf.setOutputKeyClass(Text.class);
-      conf.setOutputValueClass(ArrayWritable.class);
+      conf.setOutputValueClass(String.class);
 
       conf.setMapperClass(Map.class);
       conf.setNumReduceTasks(0);
       
       conf.setInputFormat(TextInputFormat.class);
-      conf.setOutputFormat(SequenceFileOutputFormat.class);
-      SequenceFileOutputFormat.setCompressOutput(conf, true);
-      SequenceFileOutputFormat.setOutputCompressorClass(conf, GzipCodec.class);
-      SequenceFileOutputFormat.setOutputCompressionType(conf, CompressionType.BLOCK);
-	
-//      List<String> other_args = new ArrayList<String>();
-//      for (int i=0; i < args.length; ++i) {
-//    	  other_args.add(args[i]);
-//      }
-      
+      conf.setOutputFormat(TextOutputFormat.class);
+	    
       FileInputFormat.setInputPaths(conf, new Path(args[0]));
       FileOutputFormat.setOutputPath(conf, new Path(args[1]));
       
