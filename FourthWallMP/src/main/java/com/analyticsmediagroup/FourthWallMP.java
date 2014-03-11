@@ -48,20 +48,20 @@ public class FourthWallMP extends Configured implements Tool {
     	  String line = value.toString();
     	  String[] array = line.split("\\|");
     	  
-    	  reporter.incrCounter(Counters.NUM_RECORDS, 1);
-    	  if (array.length < fields.values().length) {
-    		  reporter.incrCounter(Counters.WRONG_LENGTH, 1);
-    		  return;
-    	  }
-	      if (array[fields.device_key.ordinal()] == "null") {
-	    	  reporter.incrCounter(Counters.MISSING_DEVICE_KEY, 1);
-	      		return;
-	      }
-	      if (array[fields.station_id.ordinal()] == "null") {
-	    	  reporter.incrCounter(Counters.MISSING_STATION_ID, 1);
-	      		return;
-	      }
-
+//    	  reporter.incrCounter(Counters.NUM_RECORDS, 1);
+//    	  if (array.length < fields.values().length) {
+//    		  reporter.incrCounter(Counters.WRONG_LENGTH, 1);
+//    		  return;
+//    	  }
+//	      if (array[fields.device_key.ordinal()] == "null") {
+//	    	  reporter.incrCounter(Counters.MISSING_DEVICE_KEY, 1);
+//	      		return;
+//	      }
+//	      if (array[fields.station_id.ordinal()] == "null") {
+//	    	  reporter.incrCounter(Counters.MISSING_STATION_ID, 1);
+//	      		return;
+//	      }
+//
 	      //	      if (array[fields.processed.ordinal()] == "f") {
 //	      	  reporter.incrCounter(Counters.ALREADY_PROCESSED, 1);
 //	    	  return;
@@ -81,7 +81,7 @@ public class FourthWallMP extends Configured implements Tool {
 		    	  reporter.incrCounter(Counters.FLIPPING_CHANNEL, 1);
 		    	  return;
 		      }
-		      long duration = Long.parseLong(array[fields.id.ordinal()]);
+		      int duration = Integer.parseInt(array[fields.duration_seconds.ordinal()]);
 	
 		      for (int i=0; i < duration/900; i++) {
 		       // parse into 900s or 15min segments
@@ -89,7 +89,7 @@ public class FourthWallMP extends Configured implements Tool {
 		    	  reporter.incrCounter(Counters.VALID_RECORDS, 1);
 			      StringBuilder builder = new StringBuilder();
 			      for (String s: array) {
-			    	  builder.append(s);
+			    	  builder.append(s + " ");
 			      }
 		    	  output.collect(new LongWritable(Long.parseLong(array[fields.id.ordinal()])), builder.toString());
 		      }
@@ -98,7 +98,7 @@ public class FourthWallMP extends Configured implements Tool {
 		    	  reporter.incrCounter(Counters.VALID_RECORDS, 1);
 			      StringBuilder builder = new StringBuilder();
 			      for (String s: array) {
-			    	  builder.append(s);
+			    	  builder.append(s + " ");
 			      }
 
 		    	  output.collect(new LongWritable(Long.parseLong(array[fields.id.ordinal()])), builder.toString());
